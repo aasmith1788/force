@@ -694,7 +694,7 @@ combinedPPPRadarsServer <- function(id) {
         session,
         "select_athlete",
         choices = athlete_choices,
-        selected = athlete_choices[1]
+        selected = character(0)
       )
     })
     
@@ -784,14 +784,25 @@ combinedPPPRadarsServer <- function(id) {
           eccentric_deceleration_rfd,
           relative_ppp,
           relative_eccentric_peak_force,
-          max_velo
-        FROM vald_assessments 
+          max_velo,
+          predicted_max_velo
+        FROM vald_assessments
         WHERE testtype = 'CMJ'
       ")
-      
+
       return(data)
     })
-    
+
+    force_stats <- reactive({
+      df <- all_cmj_data()
+      ref <- df %>%
+        filter(!is.na(predicted_max_velo), between(max_velo, 93, 95))
+      list(
+        mean = mean(ref$predicted_max_velo, na.rm = TRUE),
+        sd = sd(ref$predicted_max_velo, na.rm = TRUE)
+      )
+    })
+
     # Validation for radar metrics selection
     output$radar_validation <- reactive({
       length(input$radar_metrics) < 3 || length(input$radar_metrics) > 6
@@ -870,7 +881,8 @@ combinedPPPRadarsServer <- function(id) {
         )
       }
     })
-    
+    outputOptions(output, "predicted_velo_selector", suspendWhenHidden = FALSE)
+
     # Trial selector UI for radar plot
     output$radar_trial_selector <- renderUI({
       req(athlete_trials())
@@ -880,7 +892,8 @@ combinedPPPRadarsServer <- function(id) {
                          choices = setNames(trials$trialid, trials$trial_label),
                          selected = trials$trialid[1:min(3, nrow(trials))])
     })
-    
+    outputOptions(output, "radar_trial_selector", suspendWhenHidden = FALSE)
+
     # Trial selector UI for data table
     output$table_trial_selector <- renderUI({
       req(athlete_trials())
@@ -890,6 +903,7 @@ combinedPPPRadarsServer <- function(id) {
                          choices = setNames(trials$trialid, trials$trial_label),
                          selected = trials$trialid[1:min(3, nrow(trials))])
     })
+    outputOptions(output, "table_trial_selector", suspendWhenHidden = FALSE)
     
     # Z-scores calculation (using overall mean/sd as reference)
     zdata <- reactive({
@@ -919,10 +933,18 @@ combinedPPPRadarsServer <- function(id) {
     
     # Create visualization function with professional styling
     create_visualization <- function() {
-      req(input$select_athlete, input$radar_trials,
-          input$data_table_metrics, input$trend_metric,
-          input$radar_metrics)
-      
+      if (is.null(input$select_athlete) ||
+          length(input$select_athlete) == 0 ||
+          input$select_athlete == "") {
+        plot.new()
+        text(0.5, 0.75, "Select Athlete",
+             cex = 2, col = "#000000", font = 2, family = "sans")
+        return()
+      }
+
+      req(input$radar_trials, input$data_table_metrics,
+          input$trend_metric, input$radar_metrics)
+
       # Validate selections
       if (length(input$radar_metrics) < 3 || length(input$radar_metrics) > 6) {
         plot.new()
@@ -930,14 +952,14 @@ combinedPPPRadarsServer <- function(id) {
              cex = 2, col = "#dc2626", font = 2, family = "sans")
         return()
       }
-      
+
       if (length(input$data_table_metrics) > 6) {
         plot.new()
         text(0.5, 0.5, "Please select no more than 6 metrics for the data table",
              cex = 2, col = "#dc2626", font = 2, family = "sans")
         return()
       }
-      
+
       # Setup layout with adjusted heights for better proportions
       layout(matrix(c(1,2,3,4), nrow=4, byrow=TRUE),
              heights=c(0.4, 3.2, 2.4, 2.5))
@@ -1090,13 +1112,19 @@ combinedPPPRadarsServer <- function(id) {
           filter(trialid == input$predicted_velo_trial)
         
         if(nrow(velo_trial) > 0) {
-          pv_text <- sprintf("%.1f", ifelse(is.na(velo_trial$predicted_max_velo), 0, velo_trial$predicted_max_velo))
+          stats <- force_stats()
+          pv <- velo_trial$predicted_max_velo
+          pv_text <- sprintf("%.1f", ifelse(is.na(pv), 0, pv))
           v_text <- sprintf("%.1f", ifelse(is.na(velo_trial$max_velo), 0, velo_trial$max_velo))
-          
-          combined_text <- paste0("Predicted: ", pv_text, " mph  |  Actual: ", v_text, " mph")
-          
+          score_val <- if(!is.na(pv) && !is.na(stats$mean) && !is.na(stats$sd) && stats$sd > 0) {
+            100 + ((pv - stats$mean) / stats$sd) * 10
+          } else { NA }
+          score_text <- ifelse(is.na(score_val), "N/A", sprintf("%.1f", score_val))
+
+          combined_text <- paste0("Predicted: ", pv_text, " mph  |  Actual: ", v_text, " mph  |  Score: ", score_text)
+
           # Add background box for text
-          rect(0.25, -0.18, 0.75, -0.08, col = "#f3f4f6", border = "#e5e7eb", lwd = 1)
+          rect(0.15, -0.18, 0.85, -0.08, col = "#f3f4f6", border = "#e5e7eb", lwd = 1)
           mtext(combined_text, side = 3, line = 0.8, cex = 1.3, font = 2, family = "sans", col = "#1f2937")
         }
       }
@@ -1197,23 +1225,14 @@ combinedPPPRadarsServer <- function(id) {
         
         # Calculate z-scores
         scores_data <- data.frame(trial_label = selected_trials$trial_label)
+        stats <- force_stats()
+        scores <- if(!is.na(stats$sd) && stats$sd > 0) {
+          pv <- selected_trials$predicted_max_velo
+          ifelse(!is.na(pv), round(100 + ((pv - stats$mean) / stats$sd) * 10), NA)
+        } else {
+          rep(NA, nrow(selected_trials))
+        }
         for(metric in chosen) {
-          scores <- numeric(nrow(selected_trials))
-          for(i in 1:nrow(selected_trials)) {
-            val <- selected_trials[[metric]][i]
-            if(!is.na(val)) {
-              all_vals <- all_cmj_data()[[metric]]
-              mean_val <- mean(all_vals, na.rm = TRUE)
-              sd_val <- sd(all_vals, na.rm = TRUE)
-              if(sd_val > 0) {
-                scores[i] <- round(100 + ((val - mean_val) / sd_val) * 10)
-              } else {
-                scores[i] <- 100
-              }
-            } else {
-              scores[i] <- NA
-            }
-          }
           scores_data[[metric]] <- scores
         }
         
@@ -1233,8 +1252,10 @@ combinedPPPRadarsServer <- function(id) {
         for(metric in chosen) {
           scores_display[[metric]] <- as.character(scores_data[[metric]])
         }
-        
-        combined_data <- rbind(metrics_display, scores_display)
+
+        combined_data <- do.call(rbind, lapply(seq_len(nrow(metrics_display)), function(i) {
+          rbind(metrics_display[i, ], scores_display[i, ])
+        }))
         
         # Rename columns to friendly names
         friendly_names <- names(friendly_choices)[match(chosen, friendly_choices)]

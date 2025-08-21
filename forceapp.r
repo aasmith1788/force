@@ -522,13 +522,13 @@ combinedPPPRadarsUI <- function(id) {
           
           # Velocity Predictions
           uiOutput(ns("predicted_velo_selector")),
-          
+
           # Radar Chart Configuration
           div(
             class = "filter-section",
-            div(class = "section-header", onclick = paste0("toggleSection('", ns("radar_section"), "')"),
+            div(class = "section-header collapsed", onclick = paste0("toggleSection('", ns("radar_section"), "')"),
                 "RADAR CHART CONFIGURATION"),
-            div(id = ns("radar_section"), class = "section-content",
+            div(id = ns("radar_section"), class = "section-content", style = "display:none;",
                 
                 # Metrics selector
                 div(class = "subsection-header", "Select Metrics (3-6)"),
@@ -576,9 +576,9 @@ combinedPPPRadarsUI <- function(id) {
           # Trend Analysis
           div(
             class = "filter-section",
-            div(class = "section-header", onclick = paste0("toggleSection('", ns("trend_section"), "')"),
+            div(class = "section-header collapsed", onclick = paste0("toggleSection('", ns("trend_section"), "')"),
                 "TREND ANALYSIS"),
-            div(id = ns("trend_section"), class = "section-content",
+            div(id = ns("trend_section"), class = "section-content", style = "display:none;",
                 p("Track metric progression over time", class = "info-text"),
                 selectInput(ns("trend_metric"), "Select Metric",
                             choices = friendly_choices,
@@ -590,9 +590,9 @@ combinedPPPRadarsUI <- function(id) {
           # Data Table Configuration
           div(
             class = "filter-section",
-            div(class = "section-header", onclick = paste0("toggleSection('", ns("table_section"), "')"),
+            div(class = "section-header collapsed", onclick = paste0("toggleSection('", ns("table_section"), "')"),
                 "DATA TABLE CONFIGURATION"),
-            div(id = ns("table_section"), class = "section-content",
+            div(id = ns("table_section"), class = "section-content", style = "display:none;",
                 
                 # Trial selector for table
                 div(class = "subsection-header", "Select Trials (up to 3)"),
@@ -839,11 +839,11 @@ combinedPPPRadarsServer <- function(id) {
     # Predicted velocity selector UI with enhanced styling
     output$predicted_velo_selector <- renderUI({
       req(athlete_trials())
-      
+
       trials_with_pred <- athlete_trials() %>%
         filter(!is.na(predicted_max_velo)) %>%
         arrange(desc(recordedutc))
-      
+
       if (nrow(trials_with_pred) > 0) {
         # Create labels with predicted and actual velocity
         choice_labels <- sapply(1:nrow(trials_with_pred), function(i) {
@@ -852,31 +852,45 @@ combinedPPPRadarsServer <- function(id) {
           v <- ifelse(is.na(trial$max_velo), "N/A", sprintf("%.1f", trial$max_velo))
           paste0(trial$trial_label, " | PV: ", pv, " mph | V: ", v, " mph")
         })
-        
+
         div(
           class = "filter-section",
-          h4("Velocity Predictions", class = "section-header"),
-          selectInput(session$ns("predicted_velo_trial"), NULL,
-                      choices = setNames(trials_with_pred$trialid, choice_labels),
-                      selected = trials_with_pred$trialid[1],
-                      width = "100%")
+          div(class = "section-header collapsed", onclick = paste0("toggleSection('", session$ns("pred_velo_section"), "')"),
+              "VELOCITY PREDICTIONS"),
+          div(id = session$ns("pred_velo_section"), class = "section-content", style = "display:none;",
+              selectInput(session$ns("predicted_velo_trial"), NULL,
+                          choices = setNames(trials_with_pred$trialid, choice_labels),
+                          selected = trials_with_pred$trialid[1],
+                          width = "100%"))
         )
       } else {
         div(
           class = "filter-section",
-          h4("Velocity Predictions", class = "section-header"),
-          p("No velocity predictions available", 
-            style = "font-size: 12px; color: #6b7280; text-align: center; padding: 10px;")
+          div(class = "section-header collapsed", onclick = paste0("toggleSection('", session$ns("pred_velo_section"), "')"),
+              "VELOCITY PREDICTIONS"),
+          div(id = session$ns("pred_velo_section"), class = "section-content", style = "display:none;",
+              p("No velocity predictions available",
+                style = "font-size: 12px; color: #6b7280; text-align: center; padding: 10px;"))
         )
       }
     })
-    
+
     # Trial selector UI for radar plot
     output$radar_trial_selector <- renderUI({
       req(athlete_trials())
-      
+
       trials <- athlete_trials()
       checkboxGroupInput(session$ns("radar_trials"), NULL,
+                         choices = setNames(trials$trialid, trials$trial_label),
+                         selected = trials$trialid[1:min(3, nrow(trials))])
+    })
+
+    # Trial selector UI for data table
+    output$table_trial_selector <- renderUI({
+      req(athlete_trials())
+
+      trials <- athlete_trials()
+      checkboxGroupInput(session$ns("table_trials"), NULL,
                          choices = setNames(trials$trialid, trials$trial_label),
                          selected = trials$trialid[1:min(3, nrow(trials))])
     })
@@ -909,7 +923,7 @@ combinedPPPRadarsServer <- function(id) {
     
     # Create visualization function with professional styling
     create_visualization <- function() {
-      req(input$select_athlete, input$radar_trials,
+      req(input$select_athlete, input$radar_trials, input$table_trials,
           input$data_table_metrics, input$trend_metric,
           input$radar_metrics)
       
@@ -1167,12 +1181,12 @@ combinedPPPRadarsServer <- function(id) {
       
       # PART 4: Professional Data Table
       chosen <- input$data_table_metrics
-      
-      # Get last 3 trials
+
+      # Get selected trials for table
       recent_trials <- athlete_trials() %>%
-        arrange(desc(recordedutc)) %>%
-        slice_head(n = 3) %>%
-        arrange(recordedutc)
+        filter(trialid %in% input$table_trials) %>%
+        arrange(recordedutc) %>%
+        slice_head(n = 3)
       
       if(nrow(recent_trials) > 0 && length(chosen) > 0) {
         # Prepare metrics data with rounding

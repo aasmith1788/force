@@ -1252,8 +1252,10 @@ combinedPPPRadarsServer <- function(id) {
         for(metric in chosen) {
           scores_display[[metric]] <- as.character(scores_data[[metric]])
         }
-        
-        combined_data <- rbind(metrics_display, scores_display)
+
+        combined_data <- do.call(rbind, lapply(seq_len(nrow(metrics_display)), function(i) {
+          rbind(metrics_display[i, ], scores_display[i, ])
+        }))
         
         # Rename columns to friendly names
         friendly_names <- names(friendly_choices)[match(chosen, friendly_choices)]

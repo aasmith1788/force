@@ -694,7 +694,7 @@ combinedPPPRadarsServer <- function(id) {
         session,
         "select_athlete",
         choices = athlete_choices,
-        selected = athlete_choices[1]
+        selected = character(0)
       )
     })
     
@@ -919,10 +919,18 @@ combinedPPPRadarsServer <- function(id) {
     
     # Create visualization function with professional styling
     create_visualization <- function() {
-      req(input$select_athlete, input$radar_trials,
-          input$data_table_metrics, input$trend_metric,
-          input$radar_metrics)
-      
+      if (is.null(input$select_athlete) ||
+          length(input$select_athlete) == 0 ||
+          input$select_athlete == "") {
+        plot.new()
+        text(0.5, 0.5, "Select Athlete",
+             cex = 2, col = "#6b7280", font = 2, family = "sans")
+        return()
+      }
+
+      req(input$radar_trials, input$data_table_metrics,
+          input$trend_metric, input$radar_metrics)
+
       # Validate selections
       if (length(input$radar_metrics) < 3 || length(input$radar_metrics) > 6) {
         plot.new()
@@ -930,14 +938,14 @@ combinedPPPRadarsServer <- function(id) {
              cex = 2, col = "#dc2626", font = 2, family = "sans")
         return()
       }
-      
+
       if (length(input$data_table_metrics) > 6) {
         plot.new()
         text(0.5, 0.5, "Please select no more than 6 metrics for the data table",
              cex = 2, col = "#dc2626", font = 2, family = "sans")
         return()
       }
-      
+
       # Setup layout with adjusted heights for better proportions
       layout(matrix(c(1,2,3,4), nrow=4, byrow=TRUE),
              heights=c(0.4, 3.2, 2.4, 2.5))

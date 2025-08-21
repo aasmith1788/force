@@ -200,7 +200,7 @@ combinedPPPRadarsUI <- function(id) {
         border: 1px solid #e5e7eb;
         border-radius: 8px;
         margin-bottom: 16px;
-        overflow: hidden;
+        overflow: visible;
         transition: all 0.3s ease;
       }
       
@@ -526,9 +526,9 @@ combinedPPPRadarsUI <- function(id) {
           # Radar Chart Configuration
           div(
             class = "filter-section",
-            div(class = "section-header", onclick = paste0("toggleSection('", ns("radar_section"), "')"),
+            div(class = "section-header collapsed", onclick = paste0("toggleSection('", ns("radar_section"), "')"),
                 "RADAR CHART CONFIGURATION"),
-            div(id = ns("radar_section"), class = "section-content",
+            div(id = ns("radar_section"), class = "section-content", style = "display: none;",
                 
                 # Metrics selector
                 div(class = "subsection-header", "Select Metrics (3-6)"),
@@ -576,9 +576,9 @@ combinedPPPRadarsUI <- function(id) {
           # Trend Analysis
           div(
             class = "filter-section",
-            div(class = "section-header", onclick = paste0("toggleSection('", ns("trend_section"), "')"),
+            div(class = "section-header collapsed", onclick = paste0("toggleSection('", ns("trend_section"), "')"),
                 "TREND ANALYSIS"),
-            div(id = ns("trend_section"), class = "section-content",
+            div(id = ns("trend_section"), class = "section-content", style = "display: none;",
                 p("Track metric progression over time", class = "info-text"),
                 selectInput(ns("trend_metric"), "Select Metric",
                             choices = friendly_choices,
@@ -590,9 +590,9 @@ combinedPPPRadarsUI <- function(id) {
           # Data Table Configuration
           div(
             class = "filter-section",
-            div(class = "section-header", onclick = paste0("toggleSection('", ns("table_section"), "')"),
+            div(class = "section-header collapsed", onclick = paste0("toggleSection('", ns("table_section"), "')"),
                 "DATA TABLE CONFIGURATION"),
-            div(id = ns("table_section"), class = "section-content",
+            div(id = ns("table_section"), class = "section-content", style = "display: none;",
                 
                 # Trial selector for table
                 div(class = "subsection-header", "Select Trials (up to 3)"),
@@ -874,9 +874,19 @@ combinedPPPRadarsServer <- function(id) {
     # Trial selector UI for radar plot
     output$radar_trial_selector <- renderUI({
       req(athlete_trials())
-      
+
       trials <- athlete_trials()
       checkboxGroupInput(session$ns("radar_trials"), NULL,
+                         choices = setNames(trials$trialid, trials$trial_label),
+                         selected = trials$trialid[1:min(3, nrow(trials))])
+    })
+
+    # Trial selector UI for data table
+    output$table_trial_selector <- renderUI({
+      req(athlete_trials())
+
+      trials <- athlete_trials()
+      checkboxGroupInput(session$ns("table_trials"), NULL,
                          choices = setNames(trials$trialid, trials$trial_label),
                          selected = trials$trialid[1:min(3, nrow(trials))])
     })
@@ -1167,24 +1177,30 @@ combinedPPPRadarsServer <- function(id) {
       
       # PART 4: Professional Data Table
       chosen <- input$data_table_metrics
-      
-      # Get last 3 trials
-      recent_trials <- athlete_trials() %>%
-        arrange(desc(recordedutc)) %>%
-        slice_head(n = 3) %>%
-        arrange(recordedutc)
-      
-      if(nrow(recent_trials) > 0 && length(chosen) > 0) {
+
+      selected_trials <- athlete_trials()
+      if(!is.null(input$table_trials) && length(input$table_trials) > 0) {
+        selected_trials <- selected_trials %>%
+          filter(trialid %in% input$table_trials) %>%
+          arrange(recordedutc)
+      } else {
+        selected_trials <- selected_trials %>%
+          arrange(desc(recordedutc)) %>%
+          slice_head(n = 3) %>%
+          arrange(recordedutc)
+      }
+
+      if(nrow(selected_trials) > 0 && length(chosen) > 0) {
         # Prepare metrics data with rounding
-        metrics_data <- recent_trials %>%
+        metrics_data <- selected_trials %>%
           select(trial_label, all_of(chosen))
-        
+
         # Calculate z-scores
-        scores_data <- data.frame(trial_label = recent_trials$trial_label)
+        scores_data <- data.frame(trial_label = selected_trials$trial_label)
         for(metric in chosen) {
-          scores <- numeric(nrow(recent_trials))
-          for(i in 1:nrow(recent_trials)) {
-            val <- recent_trials[[metric]][i]
+          scores <- numeric(nrow(selected_trials))
+          for(i in 1:nrow(selected_trials)) {
+            val <- selected_trials[[metric]][i]
             if(!is.na(val)) {
               all_vals <- all_cmj_data()[[metric]]
               mean_val <- mean(all_vals, na.rm = TRUE)
@@ -1233,7 +1249,7 @@ combinedPPPRadarsServer <- function(id) {
         n_cols <- ncol(combined_data)
         
         y_pos_top <- 0.92
-        row_height <- 0.11
+        row_height <- 0.13
         header_height <- row_height * 1.5
         y_pos_bottom <- y_pos_top - header_height - (row_height * n_rows)
         
@@ -1333,8 +1349,8 @@ combinedPPPRadarsServer <- function(id) {
             # Different styling for different columns
             if(j == 1) {
               # Trial column - smaller font
-              text(col_center, row_center, cell_text, 
-                   cex = 1.0, col = "#374151")
+              text(col_center, row_center, cell_text,
+                   cex = 1.3, col = "#374151")
             } else if(j == 2) {
               # Type column - styled badge
               bg_col <- ifelse(cell_text == "Raw", "#dbeafe", "#fef3c7")
@@ -1343,12 +1359,12 @@ combinedPPPRadarsServer <- function(id) {
               rect(col_positions[j] + 0.01, row_center - row_height * 0.25,
                    col_positions[j] + col_widths[j] - 0.01, row_center + row_height * 0.25,
                    col = bg_col, border = NA)
-              text(col_center, row_center, cell_text, 
-                   cex = 0.9, font = 2, col = text_col)
+              text(col_center, row_center, cell_text,
+                   cex = 1.1, font = 2, col = text_col)
             } else {
               # Data columns
-              text(col_center, row_center, cell_text, 
-                   cex = 1.2, font = 1, col = "#111827")
+              text(col_center, row_center, cell_text,
+                   cex = 1.5, font = 1, col = "#111827")
             }
           }
         }

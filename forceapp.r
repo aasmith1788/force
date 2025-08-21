@@ -784,14 +784,25 @@ combinedPPPRadarsServer <- function(id) {
           eccentric_deceleration_rfd,
           relative_ppp,
           relative_eccentric_peak_force,
-          max_velo
-        FROM vald_assessments 
+          max_velo,
+          predicted_max_velo
+        FROM vald_assessments
         WHERE testtype = 'CMJ'
       ")
-      
+
       return(data)
     })
-    
+
+    force_stats <- reactive({
+      df <- all_cmj_data()
+      ref <- df %>%
+        filter(!is.na(predicted_max_velo), between(max_velo, 93, 95))
+      list(
+        mean = mean(ref$predicted_max_velo, na.rm = TRUE),
+        sd = sd(ref$predicted_max_velo, na.rm = TRUE)
+      )
+    })
+
     # Validation for radar metrics selection
     output$radar_validation <- reactive({
       length(input$radar_metrics) < 3 || length(input$radar_metrics) > 6
@@ -1101,13 +1112,19 @@ combinedPPPRadarsServer <- function(id) {
           filter(trialid == input$predicted_velo_trial)
         
         if(nrow(velo_trial) > 0) {
-          pv_text <- sprintf("%.1f", ifelse(is.na(velo_trial$predicted_max_velo), 0, velo_trial$predicted_max_velo))
+          stats <- force_stats()
+          pv <- velo_trial$predicted_max_velo
+          pv_text <- sprintf("%.1f", ifelse(is.na(pv), 0, pv))
           v_text <- sprintf("%.1f", ifelse(is.na(velo_trial$max_velo), 0, velo_trial$max_velo))
-          
-          combined_text <- paste0("Predicted: ", pv_text, " mph  |  Actual: ", v_text, " mph")
-          
+          score_val <- if(!is.na(pv) && !is.na(stats$mean) && !is.na(stats$sd) && stats$sd > 0) {
+            100 + ((pv - stats$mean) / stats$sd) * 10
+          } else { NA }
+          score_text <- ifelse(is.na(score_val), "N/A", sprintf("%.1f", score_val))
+
+          combined_text <- paste0("Predicted: ", pv_text, " mph  |  Actual: ", v_text, " mph  |  Score: ", score_text)
+
           # Add background box for text
-          rect(0.25, -0.18, 0.75, -0.08, col = "#f3f4f6", border = "#e5e7eb", lwd = 1)
+          rect(0.15, -0.18, 0.85, -0.08, col = "#f3f4f6", border = "#e5e7eb", lwd = 1)
           mtext(combined_text, side = 3, line = 0.8, cex = 1.3, font = 2, family = "sans", col = "#1f2937")
         }
       }
@@ -1213,10 +1230,16 @@ combinedPPPRadarsServer <- function(id) {
           for(i in 1:nrow(selected_trials)) {
             val <- selected_trials[[metric]][i]
             if(!is.na(val)) {
-              all_vals <- all_cmj_data()[[metric]]
-              mean_val <- mean(all_vals, na.rm = TRUE)
-              sd_val <- sd(all_vals, na.rm = TRUE)
-              if(sd_val > 0) {
+              if(metric == "predicted_max_velo") {
+                stats <- force_stats()
+                mean_val <- stats$mean
+                sd_val <- stats$sd
+              } else {
+                all_vals <- all_cmj_data()[[metric]]
+                mean_val <- mean(all_vals, na.rm = TRUE)
+                sd_val <- sd(all_vals, na.rm = TRUE)
+              }
+              if(!is.na(sd_val) && sd_val > 0) {
                 scores[i] <- round(100 + ((val - mean_val) / sd_val) * 10)
               } else {
                 scores[i] <- 100

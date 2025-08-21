@@ -870,7 +870,8 @@ combinedPPPRadarsServer <- function(id) {
         )
       }
     })
-    
+    outputOptions(output, "predicted_velo_selector", suspendWhenHidden = FALSE)
+
     # Trial selector UI for radar plot
     output$radar_trial_selector <- renderUI({
       req(athlete_trials())
@@ -880,7 +881,8 @@ combinedPPPRadarsServer <- function(id) {
                          choices = setNames(trials$trialid, trials$trial_label),
                          selected = trials$trialid[1:min(3, nrow(trials))])
     })
-    
+    outputOptions(output, "radar_trial_selector", suspendWhenHidden = FALSE)
+
     # Trial selector UI for data table
     output$table_trial_selector <- renderUI({
       req(athlete_trials())
@@ -890,6 +892,7 @@ combinedPPPRadarsServer <- function(id) {
                          choices = setNames(trials$trialid, trials$trial_label),
                          selected = trials$trialid[1:min(3, nrow(trials))])
     })
+    outputOptions(output, "table_trial_selector", suspendWhenHidden = FALSE)
     
     # Z-scores calculation (using overall mean/sd as reference)
     zdata <- reactive({
@@ -923,8 +926,8 @@ combinedPPPRadarsServer <- function(id) {
           length(input$select_athlete) == 0 ||
           input$select_athlete == "") {
         plot.new()
-        text(0.5, 0.5, "Select Athlete",
-             cex = 2, col = "#6b7280", font = 2, family = "sans")
+        text(0.5, 0.75, "Select Athlete",
+             cex = 2, col = "#000000", font = 2, family = "sans")
         return()
       }
 

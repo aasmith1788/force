@@ -1225,29 +1225,14 @@ combinedPPPRadarsServer <- function(id) {
         
         # Calculate z-scores
         scores_data <- data.frame(trial_label = selected_trials$trial_label)
+        stats <- force_stats()
+        scores <- if(!is.na(stats$sd) && stats$sd > 0) {
+          pv <- selected_trials$predicted_max_velo
+          ifelse(!is.na(pv), round(100 + ((pv - stats$mean) / stats$sd) * 10), NA)
+        } else {
+          rep(NA, nrow(selected_trials))
+        }
         for(metric in chosen) {
-          scores <- numeric(nrow(selected_trials))
-          for(i in 1:nrow(selected_trials)) {
-            val <- selected_trials[[metric]][i]
-            if(!is.na(val)) {
-              if(metric == "predicted_max_velo") {
-                stats <- force_stats()
-                mean_val <- stats$mean
-                sd_val <- stats$sd
-              } else {
-                all_vals <- all_cmj_data()[[metric]]
-                mean_val <- mean(all_vals, na.rm = TRUE)
-                sd_val <- sd(all_vals, na.rm = TRUE)
-              }
-              if(!is.na(sd_val) && sd_val > 0) {
-                scores[i] <- round(100 + ((val - mean_val) / sd_val) * 10)
-              } else {
-                scores[i] <- 100
-              }
-            } else {
-              scores[i] <- NA
-            }
-          }
           scores_data[[metric]] <- scores
         }
         
